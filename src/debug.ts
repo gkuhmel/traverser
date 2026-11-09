@@ -62,6 +62,7 @@ export class DebugPanel {
   private readonly text: HTMLDivElement;
   private readonly sliderBox: HTMLDivElement;
   private readonly pauseBtn: HTMLButtonElement;
+  private readonly invBtn: HTMLButtonElement;
   private readonly defaults: Record<string, number> = {};
   private openGroup: string | null = null;
   private collapsed = false;
@@ -116,9 +117,11 @@ export class DebugPanel {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;align-items:center';
     this.pauseBtn = this.button('pause', () => this.togglePause());
+    this.invBtn = this.button('invincible', () => this.toggleInvincible());
     row.append(
       this.pauseBtn,
       this.button('pas', () => this.step()),
+      this.invBtn,
       this.button('IA', () => this.toggleGroup('IA')),
       this.button('densité', () => this.toggleGroup('Densité')),
       this.button('−2/s', () => this.bump(-2)),
@@ -161,6 +164,13 @@ export class DebugPanel {
   private togglePause(): void {
     this.paused = !this.paused;
     this.pauseBtn.textContent = this.paused ? 'reprendre' : 'pause';
+  }
+
+  private toggleInvincible(): void {
+    const g = this.game;
+    g.invincible = !g.invincible;
+    this.invBtn.style.background = g.invincible ? 'rgba(246,173,85,0.6)' : 'rgba(255,255,255,0.15)';
+    this.refresh();
   }
 
   private step(): void {
@@ -277,7 +287,8 @@ export class DebugPanel {
       `piéton réel   ${fmtVec(p.vx, p.vy)}  |v| ${Math.hypot(p.vx, p.vy).toFixed(2)} m/s\n` +
       `piéton perçu  ${fmtVec(q.vx, q.vy)}  |v| ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s\n` +
       `scooters ${t.scooters.length}  en évitement ${reacting}  débit ${t.effectiveRate.toFixed(1)}/s\n` +
-      `densité ${g.densityLevel}  temps ${g.playTime.toFixed(0)} s  graine ${g.seed}`;
+      `densité ${g.densityLevel}  temps ${g.playTime.toFixed(0)} s  graine ${g.seed}\n` +
+      `frôlements ${g.nearMisses}` + (g.invincible ? `  contacts ignorés ${g.ghostHits}` : '');
   }
 
   // --- Surcouche dessinée dans le monde (mètres) ---

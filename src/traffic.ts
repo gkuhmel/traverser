@@ -32,6 +32,7 @@ export class Traffic {
     const list = this.scooters;
     for (const s of list) s.think(dt, time, ped, yLimit);
     for (const s of list) s.integrate(dt, -yLimit, yLimit);
+    this.resolveOverlaps(yLimit);
 
     // Disparition hors écran (retrait par échange avec le dernier : pas d'allocation).
     for (let i = list.length - 1; i >= 0; i--) {
@@ -91,6 +92,51 @@ export class Traffic {
       if (Math.abs(o.x - x) < minDx && Math.abs(o.y - y) < config.scooterWidth + 0.2) return false;
     }
     return true;
+  }
+
+  /**
+   * Contrainte dure : deux scooters ne se superposent jamais. Chaque paire qui se recouvre (marge comprise)
+   * est séparée selon l'axe de moindre pénétration : latéralement s'ils sont côte à côte, sinon celui de
+   * derrière est reculé et calé sur la vitesse de celui de devant.
+   */
+  private resolveOverlaps(yLimit: number): void {
+    const list = this.scooters;
+    const n = list.length;
+    const minDx = config.scooterLength + config.scooterGapMin;
+    const minDy = config.scooterWidth + config.scooterGapMin;
+    for (let i = 0; i < n; i++) {
+      const a = list[i]!;
+      for (let j = i + 1; j < n; j++) {
+        const b = list[j]!;
+        const dx = b.x - a.x;
+        const adx = Math.abs(dx);
+        if (adx >= minDx) continue;
+        const dy = b.y - a.y;
+        const ady = Math.abs(dy);
+        if (ady >= minDy) continue;
+
+        const penX = (minDx - adx) / minDx;
+        const penY = (minDy - ady) / minDy;
+        if (penY <= penX || a.dir !== b.dir) {
+          // Côte à côte : on écarte chacun de la moitié, sans sortir de la chaussée.
+          const sign = dy !== 0 ? Math.sign(dy) : i < j ? 1 : -1;
+          const push = (minDy - ady) / 2;
+          a.y = Math.max(-yLimit, Math.min(yLimit, a.y - sign * push));
+          b.y = Math.max(-yLimit, Math.min(yLimit, b.y + sign * push));
+          if ((b.vy - a.vy) * sign < 0) {
+            const mid = (a.vy + b.vy) / 2;
+            a.vy = mid;
+            b.vy = mid;
+          }
+        } else {
+          // L'un derrière l'autre : celui de derrière recule et prend la vitesse de celui de devant.
+          const ahead = dx * a.dir > 0 ? b : a;
+          const behind = ahead === b ? a : b;
+          behind.x = ahead.x - ahead.dir * minDx;
+          if (Math.abs(behind.vx) > Math.abs(ahead.vx)) behind.vx = ahead.vx;
+        }
+      }
+    }
   }
 
   /** Séparation latérale douce et suivi longitudinal, calculés sur l'état courant (indépendant de l'ordre). */

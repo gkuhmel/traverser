@@ -73,6 +73,8 @@ export const config = {
   sepRangeY: 1.4,
   /** Séparation : vitesse latérale de répulsion max (m/s). */
   sepStrength: 2,
+  /** Écart minimal garanti entre deux scooters (m) : contrainte dure, jamais de superposition. */
+  scooterGapMin: 0.1,
   /** Suivi : écart mini pare-chocs à pare-chocs (m) et raideur (1/s). */
   followGap: 0.8,
   followGain: 2.5,
@@ -118,6 +120,20 @@ export const config = {
   avoidGain: 4,
   /** Part de la séparation entre scooters conservée pendant un évitement. */
   avoidSepFactor: 0.3,
+
+  // --- Collision, frôlements, fin de partie (§6) ---
+  /** Durée de l'arrêt sur image à l'impact (s). */
+  hitStopDuration: 0.3,
+  /** Amplitude (m) et durée (s) du tremblement d'écran à l'impact. */
+  shakeAmplitude: 0.25,
+  shakeDuration: 0.3,
+  /** Frôlement : scooter passé à moins de cet écart (m) sans contact. Spec : 0,8 ; ramené à 0,4, juste sous
+   *  safeDistance (0,5), sinon chaque évitement normal compte comme un frôlement (3 à 12 par traversée). */
+  nearMissDistance: 0.4,
+  /** Durée de l'effet visuel de frôlement (s). */
+  nearMissFxDuration: 0.45,
+  /** Délai avant que « Toucher pour rejouer » soit actif (s). */
+  replayDelay: 0.5,
 
   // --- Densité (§7) ---
   /** Débit initial (scooters/s). */

@@ -61,6 +61,11 @@ export class Scooter {
   avoidY = 0;
   /** Vitesse max imposée par l'évitement (m/s). */
   avoidSpeed = Infinity;
+  /** Suivi du passage près du piéton : écart minimal, contact, piéton dépassé (frôlements, §6). */
+  minPedGap = Infinity;
+  pedTouched = false;
+  pedPassed = false;
+
   /** Position prédite du piéton au moment du croisement (debug : point fantôme). */
   ghostX = 0;
   ghostY = 0;

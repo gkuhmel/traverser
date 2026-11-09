@@ -20,6 +20,7 @@ const COLORS = {
   hudShadow: 'rgba(0, 0, 0, 0.45)',
   hint: 'rgba(255, 243, 224, 0.85)',
   hudDim: 'rgba(255, 243, 224, 0.55)',
+  record: '#f6c35b',
   scooterShadow: 'rgba(0, 0, 0, 0.32)',
   seat: 'rgba(25, 20, 18, 0.75)',
   headlight: '#fff6c8',
@@ -66,17 +67,108 @@ export class Renderer {
     ctx.fillStyle = COLORS.background;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+    // Hors partie (impact, fin), la simulation est figée : pas d'interpolation.
+    if (game.phase !== 'playing') alpha = 1;
+
+    // Tremblement d'écran à l'impact (rendu seulement : n'affecte pas la simulation).
+    const shakeT = game.phase === 'playing' ? Infinity : game.phase === 'hit' ? game.phaseTime : game.phaseTime + config.hitStopDuration;
+    const shake = shakeT < config.shakeDuration ? config.shakeAmplitude * (1 - shakeT / config.shakeDuration) : 0;
+    const camX = camera.x;
+    const camY = camera.y;
+    camera.x += (Math.random() * 2 - 1) * shake;
+    camera.y += (Math.random() * 2 - 1) * shake;
+
     // Monde, en mètres.
     camera.apply(ctx, dpr);
     const px = 1 / camera.scale;
     this.drawStreet(px);
     this.drawScooters(game, alpha);
+    this.drawNearMisses(game, px);
     this.drawPedestrian(game, alpha);
     this.overlay?.(ctx, alpha, px);
+    camera.x = camX;
+    camera.y = camY;
 
     // HUD, en pixels CSS.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.drawHud(game);
+    if (game.phase === 'hit') this.drawHitFlash(game);
+    if (game.phase === 'over') this.drawGameOver(game);
+    else this.drawHud(game);
+  }
+
+  /** Frôlement : traits de vent dans le sillage du scooter et bref halo autour du piéton. */
+  private drawNearMisses(game: Game, px: number): void {
+    const { ctx } = this;
+    for (const f of game.nearMissFx) {
+      const t = f.age / config.nearMissFxDuration;
+      const a = 1 - t;
+      ctx.strokeStyle = `rgba(255, 250, 235, ${0.75 * a})`;
+      ctx.lineWidth = 2 * px;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = -1; i <= 1; i++) {
+        const y = f.y + i * 0.22;
+        const x0 = f.x + f.dir * (0.4 + t * 1.2) - f.dir * Math.abs(i) * 0.3;
+        ctx.moveTo(x0, y);
+        ctx.lineTo(x0 - f.dir * (1.1 - Math.abs(i) * 0.35), y);
+      }
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      const p = game.ped;
+      ctx.strokeStyle = `rgba(255, 250, 235, ${0.6 * a})`;
+      ctx.lineWidth = 2.5 * px;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, config.pedRadius + 0.1 + t * 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /** Flash rouge qui s'estompe pendant l'arrêt sur image. */
+  private drawHitFlash(game: Game): void {
+    const a = Math.max(0, 1 - game.phaseTime / config.hitStopDuration) * 0.35;
+    this.ctx.fillStyle = `rgba(220, 60, 40, ${a})`;
+    this.ctx.fillRect(0, 0, this.camera.width, this.camera.height);
+  }
+
+  /** Écran de fin : traversées, meilleur score, frôlements, « Toucher pour rejouer ». */
+  private drawGameOver(game: Game): void {
+    const { ctx, camera } = this;
+    const fade = Math.min(1, game.phaseTime / 0.25);
+    const cx = camera.width / 2;
+    const cy = camera.height * 0.42;
+
+    ctx.fillStyle = `rgba(20, 14, 10, ${0.68 * fade})`;
+    ctx.fillRect(0, 0, camera.width, camera.height);
+
+    ctx.globalAlpha = fade;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = COLORS.hudText;
+    ctx.font = '600 22px -apple-system, system-ui, sans-serif';
+    ctx.fillText('Renversé !', cx, cy - 92);
+
+    ctx.font = '700 72px -apple-system, system-ui, sans-serif';
+    ctx.fillText(String(game.crossings), cx, cy - 22);
+    ctx.font = '15px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = COLORS.hint;
+    ctx.fillText(game.crossings > 1 ? 'traversées' : 'traversée', cx, cy + 26);
+
+    ctx.font = '600 16px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = game.newRecord ? COLORS.record : COLORS.hudText;
+    ctx.fillText(game.newRecord ? `Nouveau record !` : `Meilleur : ${game.best}`, cx, cy + 66);
+    ctx.font = '14px -apple-system, system-ui, sans-serif';
+    ctx.fillStyle = COLORS.hudDim;
+    ctx.fillText(`${game.nearMisses} frôlement${game.nearMisses > 1 ? 's' : ''}`, cx, cy + 94);
+
+    if (game.phaseTime >= config.replayDelay) {
+      const pulse = 0.65 + 0.35 * Math.sin(game.phaseTime * 4);
+      ctx.globalAlpha = fade * pulse;
+      ctx.fillStyle = COLORS.hudText;
+      ctx.font = '600 18px -apple-system, system-ui, sans-serif';
+      ctx.fillText('Toucher pour rejouer', cx, camera.height * 0.78);
+    }
+    ctx.globalAlpha = 1;
   }
 
   private drawStreet(px: number): void {
