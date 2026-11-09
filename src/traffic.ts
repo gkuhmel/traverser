@@ -1,6 +1,6 @@
 import { config } from './config';
 import type { Rng } from './rng';
-import { Scooter } from './scooter';
+import { Scooter, type PedPerception } from './scooter';
 
 /** Nombre de couleurs de carrosserie (palette définie dans le rendu). */
 export const SCOOTER_COLOR_COUNT = 8;
@@ -18,7 +18,7 @@ export class Traffic {
     this.spawnTimer = this.nextInterval();
   }
 
-  update(dt: number): void {
+  update(dt: number, time: number, ped: PedPerception): void {
     this.spawnTimer -= dt;
     while (this.spawnTimer <= 0) {
       this.spawn();
@@ -30,6 +30,7 @@ export class Traffic {
     const half = config.streetWidth / 2;
     const yLimit = half - config.scooterWidth / 2 - config.streetEdgeMargin;
     const list = this.scooters;
+    for (const s of list) s.think(dt, time, ped, yLimit);
     for (const s of list) s.integrate(dt, -yLimit, yLimit);
 
     // Disparition hors écran (retrait par échange avec le dernier : pas d'allocation).
@@ -76,6 +77,7 @@ export class Traffic {
         s.cruise = this.rng.range(config.scooterSpeedMin, config.scooterSpeedMax);
         s.vx = s.cruise * dir;
         s.colorIndex = this.rng.int(SCOOTER_COLOR_COUNT);
+        s.decisionTimer = this.rng.next() * config.decisionInterval;
         this.scooters.push(s);
         return;
       }

@@ -40,9 +40,9 @@ export const config = {
   /** Écart horizontal max du piéton par rapport au centre (m). */
   pedMaxX: 4.5,
   /** Position de départ : distance du piéton au bord de la chaussée, sur le trottoir (m). */
-  pedStartOffset: 1,
+  pedStartOffset: 1.2,
   /** Traversée validée quand le piéton dépasse le bord opposé de cette distance (m). */
-  arrivalMargin: 0.6,
+  arrivalMargin: 1.2,
   /** Longueur d'un pas (m), pour l'oscillation de marche. */
   stepLength: 0.7,
   /** Amplitude latérale de l'oscillation de marche (m). */
@@ -60,14 +60,14 @@ export const config = {
   /** Accélération / freinage longitudinal (m/s²). */
   scooterAccel: 3,
   scooterDecel: 8,
-  /** Vitesse latérale max (m/s) — partagée avec l'IA d'évitement. */
+  /** Vitesse latérale max (m/s), §5.4. */
   steerMax: 2.5,
   /** Accélération latérale (m/s²) : douceur des changements de cap. */
   scooterLatAccel: 5,
   /** Rappel vers la position verticale de confort (1/s). */
   comfortGain: 0.8,
   /** Marge entre les scooters et les bordures (m). */
-  streetEdgeMargin: 0.15,
+  streetEdgeMargin: 0.3,
   /** Séparation : portée longitudinale et latérale de la répulsion (m). */
   sepRangeX: 3,
   sepRangeY: 1.4,
@@ -86,6 +86,38 @@ export const config = {
   trafficPrewarm: 5,
   /** Plafond de sécurité du nombre de scooters. */
   maxScooters: 150,
+
+  // --- IA d'évitement (§5.2–5.4) — les deux réglages principaux : perceptionLag et commitTime ---
+  // Distances « d'écart » = espace libre entre le bord du piéton et le bord du scooter (m).
+  /** Constante de temps du lissage de la vitesse perçue du piéton (s). */
+  perceptionLag: 0.4,
+  /** Horizon de prédiction de la position du piéton (s). */
+  predictionHorizon: 1.5,
+  /** Durée d'engagement sur un côté de contournement (s). */
+  commitTime: 0.6,
+  /** Écart visé lors du contournement (m). Spec : 1,2 ; abaissé à 0,5 après simulation, car avec un écart
+   *  bord à bord de 1,2 m la marge absorbait l'erreur de prédiction et l'hésitation n'était plus punie. */
+  safeDistance: 0.5,
+  /** Écart réel sous lequel le scooter peut changer d'avis malgré l'engagement (m). */
+  panicDistance: 0.6,
+  /** Ralentissement max, en fraction de la vitesse de croisière (jamais l'arrêt complet). */
+  brakeMax: 0.4,
+  /** Distance devant le scooter sous laquelle il réagit au piéton (m). */
+  awarenessRange: 15,
+  /** Coût d'un freinage à 100 %, exprimé en mètres de déviation équivalents (préférence pour dévier). */
+  brakeCost: 4,
+  /** Nombre de niveaux de freinage évalués, de 0 à brakeMax. */
+  brakeSteps: 3,
+  /** Pénalité par mètre d'écart manquant : une option infaisable n'est retenue qu'en dernier recours. */
+  shortfallPenalty: 10,
+  /** Intervalle entre deux décisions d'un scooter (s). */
+  decisionInterval: 0.1,
+  /** Écart de déviation (m) sous lequel les deux côtés sont jugés équivalents : on préfère « derrière ». */
+  sideTieMargin: 0.3,
+  /** Raideur du guidage latéral vers la trajectoire d'évitement (1/s). */
+  avoidGain: 4,
+  /** Part de la séparation entre scooters conservée pendant un évitement. */
+  avoidSepFactor: 0.3,
 
   // --- Densité (§7) ---
   /** Débit initial (scooters/s). */

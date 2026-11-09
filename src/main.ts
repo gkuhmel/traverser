@@ -35,19 +35,26 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 // --- Debug (?debug=1), chargé uniquement à la demande ---
 const stats: LoopStats = { stepsLastFrame: 0, frameTime: 0, measure: false, updateMs: 0, renderMs: 0 };
 let onFrame: (() => void) | null = null;
+let debugPanel: import('./debug').DebugPanel | null = null;
 if (new URLSearchParams(location.search).get('debug') === '1') {
   void import('./debug').then(({ DebugPanel }) => {
     const panel = new DebugPanel(stats, camera, () => renderer.dpr, game);
+    debugPanel = panel;
     onFrame = () => panel.frame();
+    renderer.overlay = (ctx, alpha, px) => panel.drawOverlay(ctx, alpha, px);
     // Accès console pour inspecter l'état en debug.
     Object.assign(window, { game });
   });
 }
 
 startLoop(
-  (dt) => game.update(dt),
+  (dt) => {
+    // En debug, la pause / le pas à pas filtrent les pas de simulation.
+    if (debugPanel && !debugPanel.shouldUpdate()) return;
+    game.update(dt);
+  },
   (alpha) => {
-    renderer.render(game, alpha);
+    renderer.render(game, debugPanel?.paused ? 1 : alpha);
     onFrame?.();
   },
   stats,

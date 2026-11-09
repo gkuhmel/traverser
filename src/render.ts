@@ -39,6 +39,8 @@ export class Renderer {
   dpr = 1;
   /** Marge haute de sécurité (encoche / Dynamic Island), en px CSS. */
   safeTop = 0;
+  /** Surcouche de debug dessinée en mètres (null hors ?debug=1 : aucun coût). */
+  overlay: ((ctx: CanvasRenderingContext2D, alpha: number, px: number) => void) | null = null;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -70,6 +72,7 @@ export class Renderer {
     this.drawStreet(px);
     this.drawScooters(game, alpha);
     this.drawPedestrian(game, alpha);
+    this.overlay?.(ctx, alpha, px);
 
     // HUD, en pixels CSS.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
