@@ -1,6 +1,7 @@
 import type { Camera } from './camera';
 import { config } from './config';
 import type { Game } from './game';
+import type { Scooter } from './scooter';
 
 const COLORS = {
   background: '#2a211c',
@@ -18,7 +19,17 @@ const COLORS = {
   hudText: '#fff3e0',
   hudShadow: 'rgba(0, 0, 0, 0.45)',
   hint: 'rgba(255, 243, 224, 0.85)',
+  hudDim: 'rgba(255, 243, 224, 0.55)',
+  scooterShadow: 'rgba(0, 0, 0, 0.32)',
+  seat: 'rgba(25, 20, 18, 0.75)',
+  headlight: '#fff6c8',
+  taillight: '#d8433a',
 };
+
+/** Carrosseries : palette chaude (lanternes, ocre, vert d'eau) + quelques neutres. Taille = SCOOTER_COLOR_COUNT. */
+const SCOOTER_COLORS = ['#c8432f', '#e08a2c', '#d9b23e', '#5fa39a', '#3f7fa8', '#8e5aa0', '#e9e1d2', '#6b6f73'];
+/** Casques des conducteurs. */
+const HELMET_COLORS = ['#f2c14e', '#e85d4a', '#3a7ca5', '#f4efe6', '#7bb37a', '#2b2b2b'];
 
 /** Taille d'un carreau de trottoir (m) : purement décoratif. */
 const TILE = 1;
@@ -57,6 +68,7 @@ export class Renderer {
     camera.apply(ctx, dpr);
     const px = 1 / camera.scale;
     this.drawStreet(px);
+    this.drawScooters(game, alpha);
     this.drawPedestrian(game, alpha);
 
     // HUD, en pixels CSS.
@@ -122,6 +134,60 @@ export class Renderer {
     ctx.fillRect(left, half, w, 0.2);
   }
 
+  private drawScooters(game: Game, alpha: number): void {
+    const { camera } = this;
+    const halfView = camera.viewWidthM / 2 + config.scooterLength;
+    const L = config.scooterLength;
+    const W = config.scooterWidth;
+
+    for (const s of game.traffic.scooters) {
+      const x = s.prevX + (s.x - s.prevX) * alpha;
+      if (Math.abs(x - camera.x) > halfView) continue;
+      const y = s.prevY + (s.y - s.prevY) * alpha;
+      const angle = Math.atan2(s.vy, s.vx === 0 ? s.dir : s.vx);
+      this.drawScooter(s, x, y, angle, L, W);
+    }
+  }
+
+  private drawScooter(s: Scooter, x: number, y: number, angle: number, L: number, W: number): void {
+    const { ctx } = this;
+    // Ombre décalée dans le repère de la rue (lumière fixe, quel que soit le sens).
+    ctx.save();
+    ctx.translate(x + 0.08, y + 0.1);
+    ctx.rotate(angle);
+    ctx.fillStyle = COLORS.scooterShadow;
+    roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Carrosserie (avant = +x).
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = SCOOTER_COLORS[s.colorIndex] ?? '#888';
+    roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
+    ctx.fill();
+
+    // Selle, feu arrière, phare.
+    ctx.fillStyle = COLORS.seat;
+    roundRect(ctx, -L * 0.32, -W * 0.28, L * 0.42, W * 0.56, W * 0.25);
+    ctx.fill();
+    ctx.fillStyle = COLORS.taillight;
+    ctx.fillRect(-L / 2 + 0.02, -0.08, 0.06, 0.16);
+    ctx.fillStyle = COLORS.headlight;
+    ctx.beginPath();
+    ctx.arc(L / 2 - 0.12, 0, 0.09, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Conducteur : casque vu de dessus.
+    ctx.fillStyle = HELMET_COLORS[s.colorIndex % HELMET_COLORS.length] ?? '#fff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   private drawPedestrian(game: Game, alpha: number): void {
     const { ctx } = this;
     const p = game.ped;
@@ -183,6 +249,13 @@ export class Renderer {
     ctx.font = '600 34px -apple-system, system-ui, sans-serif';
     ctx.fillText(String(game.crossings), cx, top);
 
+    // Niveau de densité, discret.
+    ctx.fillStyle = COLORS.hudDim;
+    ctx.font = '13px -apple-system, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`densité ${game.densityLevel}`, camera.width - 14, top + 4);
+    ctx.textAlign = 'center';
+
     // Consigne minimale tant que la première traversée n'a pas commencé.
     if (game.crossings === 0 && !game.canWalk) {
       ctx.fillStyle = COLORS.hint;
@@ -192,6 +265,16 @@ export class Renderer {
     }
     ctx.shadowBlur = 0;
   }
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function lerpAngle(a: number, b: number, t: number): number {

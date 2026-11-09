@@ -49,6 +49,55 @@ export const config = {
   stepSway: 0.05,
   /** Vitesse de demi-tour visuel (rad/s). */
   turnRate: 9,
+
+  // --- Scooters : mouvement de base (§5.1) ---
+  /** Vitesse de croisière tirée au hasard dans [min, max] (m/s). */
+  scooterSpeedMin: 6,
+  scooterSpeedMax: 9,
+  /** Dimensions de la capsule (m). */
+  scooterLength: 1.8,
+  scooterWidth: 0.7,
+  /** Accélération / freinage longitudinal (m/s²). */
+  scooterAccel: 3,
+  scooterDecel: 8,
+  /** Vitesse latérale max (m/s) — partagée avec l'IA d'évitement. */
+  steerMax: 2.5,
+  /** Accélération latérale (m/s²) : douceur des changements de cap. */
+  scooterLatAccel: 5,
+  /** Rappel vers la position verticale de confort (1/s). */
+  comfortGain: 0.8,
+  /** Marge entre les scooters et les bordures (m). */
+  streetEdgeMargin: 0.15,
+  /** Séparation : portée longitudinale et latérale de la répulsion (m). */
+  sepRangeX: 3,
+  sepRangeY: 1.4,
+  /** Séparation : vitesse latérale de répulsion max (m/s). */
+  sepStrength: 2,
+  /** Suivi : écart mini pare-chocs à pare-chocs (m) et raideur (1/s). */
+  followGap: 0.8,
+  followGain: 2.5,
+  /** Abscisse d'apparition (m, hors écran à gauche) : laisse à l'IA la place d'anticiper. */
+  spawnX: -22,
+  /** Abscisse de disparition (m, hors écran à droite). */
+  despawnX: 12,
+  /** Double sens (test) : le haut de la rue roule de droite à gauche. */
+  twoWay: false,
+  /** Durée simulée avant le début (s) : la rue est déjà pleine à l'ouverture. */
+  trafficPrewarm: 5,
+  /** Plafond de sécurité du nombre de scooters. */
+  maxScooters: 150,
+
+  // --- Densité (§7) ---
+  /** Débit initial (scooters/s). */
+  spawnRateStart: 1.2,
+  /** Hausse du débit à chaque palier (scooters/s). */
+  spawnRateStep: 0.4,
+  /** Débit max (scooters/s). */
+  spawnRateMax: 5,
+  /** Durée d'un palier de densité (s). */
+  densityInterval: 20,
+  /** Intervalle minimal entre deux apparitions (s). */
+  spawnMinInterval: 0.03,
 };
 
 export type Config = typeof config;

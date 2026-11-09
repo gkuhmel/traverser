@@ -5,6 +5,11 @@ export interface LoopStats {
   stepsLastFrame: number;
   /** Durée réelle de la dernière frame (s). */
   frameTime: number;
+  /** Mesure du coût CPU, activée uniquement par le panneau de debug. */
+  measure: boolean;
+  /** Temps passé dans la simulation / le rendu lors de la dernière frame (ms). */
+  updateMs: number;
+  renderMs: number;
 }
 
 /**
@@ -29,18 +34,25 @@ export function startLoop(
     acc += frameTime;
     const dt = config.fixedDt;
     let steps = 0;
+    const measure = stats?.measure === true;
+    const t0 = measure ? performance.now() : 0;
     while (acc >= dt) {
       update(dt);
       acc -= dt;
       steps++;
     }
+    const t1 = measure ? performance.now() : 0;
+
+    render(acc / dt);
 
     if (stats) {
       stats.stepsLastFrame = steps;
       stats.frameTime = frameTime;
+      if (measure) {
+        stats.updateMs = t1 - t0;
+        stats.renderMs = performance.now() - t1;
+      }
     }
-
-    render(acc / dt);
     requestAnimationFrame(frame);
   };
 

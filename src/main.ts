@@ -33,12 +33,14 @@ window.visualViewport?.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 
 // --- Debug (?debug=1), chargé uniquement à la demande ---
-const stats: LoopStats = { stepsLastFrame: 0, frameTime: 0 };
+const stats: LoopStats = { stepsLastFrame: 0, frameTime: 0, measure: false, updateMs: 0, renderMs: 0 };
 let onFrame: (() => void) | null = null;
 if (new URLSearchParams(location.search).get('debug') === '1') {
   void import('./debug').then(({ DebugPanel }) => {
     const panel = new DebugPanel(stats, camera, () => renderer.dpr, game);
     onFrame = () => panel.frame();
+    // Accès console pour inspecter l'état en debug.
+    Object.assign(window, { game });
   });
 }
 
