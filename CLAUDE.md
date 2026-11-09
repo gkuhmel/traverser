@@ -19,10 +19,14 @@ Jeu web mobile (Safari iPhone, portrait) : traverser une rue de Hanoï saturée 
 - `localStorage` toujours entouré d'un `try/catch`.
 - Le panneau de debug s'active avec `?debug=1` et ne doit rien coûter quand il est désactivé.
 
-## Commandes
-- `npm run dev -- --host` pour tester sur iPhone sur le réseau local.
-- `npm run build` doit passer sans erreur TypeScript avant chaque fin d'étape.
-- `npm run deploy` : build puis déploiement sur Cloudflare Workers via wrangler (assets statiques de `dist/`, config dans `wrangler.jsonc`).
+## Commandes et déploiement (tout en ligne, rien en local chez l'utilisateur)
+- `npm run build` doit passer sans erreur TypeScript avant chaque fin d'étape (vérifié dans la session Claude Code).
+- Déploiement automatique par Cloudflare Workers Builds, branché sur le dépôt GitHub :
+  - commande de build : `npm run build` ;
+  - commande de déploiement (branche de production) : `npx wrangler deploy` ;
+  - branches de travail : `npx wrangler versions upload` → URL de préversion par branche.
+- Pour tester sur iPhone : pousser sur la branche, attendre le build Cloudflare, ouvrir l'URL de préversion dans Safari (ajouter `?debug=1` si besoin).
+- Config Worker (assets statiques de `dist/`) dans `wrangler.jsonc` ; le `name` doit correspondre au nom du Worker côté Cloudflare.
 
 ## Langue
 - Code et noms de variables en anglais ; commentaires, messages de commit et échanges en français.
