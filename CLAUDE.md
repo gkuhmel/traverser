@@ -25,7 +25,8 @@ Jeu web mobile (Safari iPhone, portrait) : traverser une rue de Hanoï saturée 
   - commande de build : `npm run build` ;
   - commande de déploiement (branche de production) : `npx wrangler deploy` ;
   - branches de travail : `npx wrangler versions upload` → URL de préversion par branche.
-- Pour tester sur iPhone : pousser sur la branche, attendre le build Cloudflare, ouvrir l'URL de préversion dans Safari (ajouter `?debug=1` si besoin).
+- Tout le travail validé par `npm run build` est poussé **directement sur `main`** (demande explicite de l'utilisateur), en plus de la branche de travail : chaque push sur `main` déploie en production.
+- Pour tester sur iPhone : attendre le build Cloudflare puis ouvrir `traverser.<sous-domaine>.workers.dev` dans Safari (ajouter `?debug=1` si besoin).
 - Config Worker (assets statiques de `dist/`) dans `wrangler.jsonc` ; le `name` doit correspondre au nom du Worker côté Cloudflare.
 
 ## Langue
