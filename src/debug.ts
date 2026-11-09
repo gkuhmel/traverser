@@ -1,9 +1,10 @@
 import type { Camera } from './camera';
+import type { Game } from './game';
 import type { LoopStats } from './loop';
 
 /**
  * Panneau de debug (?debug=1). Chargé dynamiquement : rien n'est exécuté ni téléchargé sans le paramètre.
- * Étape 1 : fps, pas de simulation par frame, taille d'écran, DPR, échelle.
+ * Pour l'instant : fps, pas de simulation par frame, écran, DPR, échelle, vitesse du piéton.
  */
 export class DebugPanel {
   private readonly el: HTMLDivElement;
@@ -16,11 +17,12 @@ export class DebugPanel {
     private readonly stats: LoopStats,
     private readonly camera: Camera,
     private readonly getDpr: () => number,
+    private readonly game: Game,
   ) {
     this.el = document.createElement('div');
     Object.assign(this.el.style, {
       position: 'fixed',
-      top: 'calc(env(safe-area-inset-top, 0px) + 6px)',
+      bottom: 'calc(env(safe-area-inset-bottom, 0px) + 6px)',
       left: '6px',
       padding: '4px 6px',
       font: '11px/1.35 ui-monospace, Menlo, monospace',
@@ -46,9 +48,15 @@ export class DebugPanel {
     this.el.textContent =
       `fps ${this.fps.toFixed(0)}  pas/frame max ${this.maxSteps}\n` +
       `écran ${c.width}×${c.height} px  dpr ${this.getDpr()}\n` +
-      `vue ${c.viewWidthM.toFixed(1)}×${c.viewHeightM.toFixed(1)} m  ${c.scale.toFixed(1)} px/m`;
+      `vue ${c.viewWidthM.toFixed(1)}×${c.viewHeightM.toFixed(1)} m  ${c.scale.toFixed(1)} px/m\n` +
+      this.pedLine();
     this.frames = 0;
     this.accTime = 0;
     this.maxSteps = 0;
+  }
+
+  private pedLine(): string {
+    const p = this.game.ped;
+    return `piéton v ${Math.hypot(p.vx, p.vy).toFixed(2)} m/s (vx ${p.vx.toFixed(2)})  y ${p.y.toFixed(1)} m`;
   }
 }

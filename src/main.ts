@@ -12,13 +12,19 @@ const renderer = new Renderer(canvas, camera);
 const input = new Input(canvas);
 const game = new Game(input, camera);
 
+// Sonde CSS pour lire la marge de sécurité haute (encoche) : env() n'est pas accessible en JS.
+const safeProbe = document.createElement('div');
+safeProbe.style.cssText =
+  'position:fixed;top:0;left:0;width:0;height:env(safe-area-inset-top,0px);visibility:hidden;pointer-events:none';
+document.body.appendChild(safeProbe);
+
 // --- Redimensionnement et DPR ---
 function resize(): void {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const dpr = Math.min(window.devicePixelRatio || 1, config.maxDpr);
   camera.resize(w, h);
-  renderer.resize(w, h, dpr);
+  renderer.resize(w, h, dpr, safeProbe.getBoundingClientRect().height);
 }
 resize();
 window.addEventListener('resize', resize);
@@ -31,7 +37,7 @@ const stats: LoopStats = { stepsLastFrame: 0, frameTime: 0 };
 let onFrame: (() => void) | null = null;
 if (new URLSearchParams(location.search).get('debug') === '1') {
   void import('./debug').then(({ DebugPanel }) => {
-    const panel = new DebugPanel(stats, camera, () => renderer.dpr);
+    const panel = new DebugPanel(stats, camera, () => renderer.dpr, game);
     onFrame = () => panel.frame();
   });
 }
