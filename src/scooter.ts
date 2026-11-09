@@ -8,6 +8,8 @@ export interface PedPerception {
   vx: number;
   vy: number;
   radius: number;
+  /** Piéton remarqué (il court) : les conducteurs s'engagent moins longtemps et s'ajustent en continu. */
+  attentive: boolean;
 }
 
 /** État de l'IA, utilisé par le comportement et affiché en debug. */
@@ -23,11 +25,21 @@ export const AiState = {
 } as const;
 export type AiState = (typeof AiState)[keyof typeof AiState];
 
+/** Types de véhicules disponibles (paramètres dans config.vehicles). */
+export type VehicleKind = keyof typeof config.vehicles;
+export const VEHICLE_KINDS = Object.keys(config.vehicles) as VehicleKind[];
+
 /**
- * Un scooter. Position = centre de la capsule (m).
- * `dir` = +1 : roule vers la droite ; -1 : vers la gauche (double sens).
+ * Un véhicule du flux : scooter, vélo, tuk-tuk ou petit camion (le nom de classe vient de la spec).
+ * Position = centre du véhicule (m). `dir` = +1 : roule vers la droite ; -1 : vers la gauche (double sens).
  */
 export class Scooter {
+  kind: VehicleKind = 'scooter';
+  /** Gabarit (m), fixé à l'apparition. */
+  length = 1.8;
+  width = 0.7;
+  cornerRadius = 0.35;
+
   x = 0;
   y = 0;
   prevX = 0;
@@ -43,9 +55,30 @@ export class Scooter {
   /** Index de couleur (rendu uniquement). */
   colorIndex = 0;
 
+  /** Paramètres du type (lus en direct : les curseurs de debug s'appliquent immédiatement). */
+  get type(): (typeof config.vehicles)[VehicleKind] {
+    return config.vehicles[this.kind];
+  }
+  get steerMax(): number {
+    return config.steerMax * this.type.steerFactor;
+  }
+  get latAccel(): number {
+    return config.scooterLatAccel * this.type.latAccelFactor;
+  }
+  get decel(): number {
+    return config.scooterDecel * this.type.decelFactor;
+  }
+  /** Ralentissement max en fraction de la croisière (jamais l'arrêt complet). */
+  get brakeMax(): number {
+    return Math.min(0.85, config.brakeMax * this.type.brakeMaxFactor);
+  }
+
   /** Consignes calculées par le trafic à chaque pas (séparation, suivi). */
   sepVy = 0;
   speedLimit = Infinity;
+  /** Véhicule de devant qui bride celui-ci (suivi), et durée du blocage (dépassement). */
+  leader: Scooter | null = null;
+  blockedTime = 0;
 
   // --- IA d'évitement ---
   ai: AiState = AiState.Idle;
@@ -55,7 +88,8 @@ export class Scooter {
   side: -1 | 0 | 1 = 0;
   /** Le côté choisi est-il « derrière » le piéton (d'où il vient) ? */
   sideIsBehind = false;
-  /** Fin de l'engagement sur le côté (temps de simulation, s). */
+  /** Début et fin de l'engagement sur le côté (temps de simulation, s). */
+  commitStart = 0;
   commitUntil = 0;
   /** Ordonnée visée pour contourner (m). */
   avoidY = 0;
@@ -75,9 +109,10 @@ export class Scooter {
    * Une fois engagé, le plan est figé pendant commitTime : seule une urgence (écart réel < panicDistance)
    * déclenche une nouvelle décision. `time` = temps de simulation (s).
    */
-  think(dt: number, time: number, ped: PedPerception, yLimit: number): void {
-    const L = config.scooterLength;
-    const halfW = config.scooterWidth / 2;
+  think(dt: number, time: number, ped: PedPerception, roadHalf: number): void {
+    const L = this.length;
+    const halfW = this.width / 2;
+    const yLimit = roadHalf - halfW;
     const r = ped.radius;
 
     // Distance longitudinale devant le scooter (m) : > 0 si le piéton est devant.
@@ -95,7 +130,10 @@ export class Scooter {
     const panic = scooterGap(this, ped.x, ped.y, r) < config.panicDistance;
 
     // 4. Engagement : pendant commitTime, le plan (côté, trajectoire, vitesse) est figé, sauf urgence.
-    const committed = this.side !== 0 && time < this.commitUntil;
+    const commitEnd = ped.attentive
+      ? Math.min(this.commitUntil, this.commitStart + config.sprintCommitTime)
+      : this.commitUntil;
+    const committed = this.side !== 0 && time < commitEnd;
     if (committed && !panic) {
       this.ai = AiState.Avoiding;
       return;
@@ -108,7 +146,7 @@ export class Scooter {
     // 1–2. Prédiction à vitesse courante : y a-t-il croisement dans l'horizon ?
     const speed = Math.abs(this.vx);
     const pedVxRel = ped.vx * this.dir;
-    const H = config.predictionHorizon;
+    const H = config.predictionHorizon * this.type.horizonFactor;
     const tEnterNow = Math.max(0, (ahead - passReach) / Math.max(0.5, speed - pedVxRel));
     const tMid = Math.max(0, ahead / Math.max(0.5, speed - pedVxRel));
     this.ghostX = ped.x + ped.vx * Math.min(tMid, H);
@@ -123,7 +161,9 @@ export class Scooter {
 
     // 3. Conflit ? Trajectoire rectiligne du scooter contre la bande balayée par le piéton.
     const clearance = config.safeDistance + halfW + r;
-    const now = this.window(speed, speed, ahead, passReach, ped);
+    // Vitesse vers laquelle le véhicule tend sans intervention (croisière, bridée par celui de devant).
+    const natural = Math.max(this.cruise * (1 - this.brakeMax), Math.min(this.cruise, this.speedLimit));
+    const now = this.window(speed, natural, ahead, passReach, ped);
     const conflict = this.y > now.yLow - clearance && this.y < now.yHigh + clearance;
     if (!conflict && !panic) {
       this.clearAvoid();
@@ -138,11 +178,14 @@ export class Scooter {
     const best = { plus: NO_OPTION(), minus: NO_OPTION() };
     const steps = Math.max(2, Math.round(config.brakeSteps));
     for (let k = 0; k < steps; k++) {
-      const factor = 1 - (config.brakeMax * k) / (steps - 1);
-      const v = this.cruise * factor;
-      const w = k === 0 && v >= speed ? now : this.window(speed, Math.min(v, speed), ahead, passReach, ped);
-      const reach = lateralReach(w.tEnter, this.vy);
-      const brakeCost = config.brakeCost * (1 - factor);
+      const factor = 1 - (this.brakeMax * k) / (steps - 1);
+      // Vitesse visée, sans dépasser ce qu'autorise le véhicule de devant (bornée au freinage max :
+      // la limite de suivi peut être nulle ou négative dans un bouchon).
+      const v = Math.max(this.cruise * (1 - this.brakeMax), Math.min(this.cruise * factor, this.speedLimit));
+      // Chaque option est une vitesse cible : on modélise la transition (accélération ou freinage).
+      const w = this.window(speed, v, ahead, passReach, ped);
+      const reach = lateralReach(w.tEnter, this.vy, this.steerMax, this.latAccel);
+      const brakeCost = config.brakeCost * this.type.brakeCostFactor * (1 - factor);
       for (const sd of [1, -1] as const) {
         const raw = sd > 0 ? w.yHigh + clearance : w.yLow - clearance;
         const target = Math.max(-yLimit, Math.min(yLimit, raw));
@@ -154,7 +197,7 @@ export class Scooter {
         if (cost < o.cost) {
           o.cost = cost;
           o.target = target;
-          o.speed = k === 0 ? Infinity : v;
+          o.speed = k === 0 ? Infinity : this.cruise * factor;
         }
       }
     }
@@ -168,6 +211,7 @@ export class Scooter {
     } else side = best.plus.cost <= best.minus.cost ? 1 : -1;
 
     // 4. Engagement pour commitTime (une urgence ne fait que replanifier, l'engagement repart).
+    this.commitStart = time;
     this.commitUntil = time + config.commitTime;
     this.side = side;
     this.sideIsBehind = side === behind;
@@ -180,24 +224,33 @@ export class Scooter {
   }
 
   /**
-   * Fenêtre de croisement si le scooter passe de la vitesse `from` à `to` (freinage à scooterDecel) :
-   * instants d'entrée/sortie de la capsule à l'abscisse du piéton et ordonnées extrêmes du piéton prédit.
+   * Fenêtre de croisement si le véhicule passe de la vitesse `from` à `to` (accélération ou freinage
+   * selon son type) : instant d'entrée de la capsule à l'abscisse du piéton et ordonnées extrêmes
+   * du piéton prédit pendant le passage.
    */
   private window(from: number, to: number, ahead: number, passReach: number, ped: PedPerception): CrossWindow {
     const pedVxRel = ped.vx * this.dir;
+    const rate = to >= from ? config.scooterAccel * this.type.accelFactor : this.decel;
+    const tr = Math.abs(to - from) / rate;
+    const dr = ((from + to) / 2 - pedVxRel) * tr;
     const tAt = (dist: number): number => {
       if (dist <= 0) return 0;
-      // Phase de freinage puis vitesse constante (relatif au piéton).
-      const tb = Math.max(0, (from - to) / config.scooterDecel);
-      const db = ((from + to) / 2 - pedVxRel) * tb;
-      if (db >= dist) {
-        const avg = Math.max(0.5, (from + to) / 2 - pedVxRel);
-        return dist / avg;
+      // Phase de transition (vitesse linéaire) puis vitesse constante, relativement au piéton.
+      if (dr >= dist) {
+        // Résolution exacte dans la phase de transition : dist = (v0 - vp) t + a t² / 2.
+        const v0 = from - pedVxRel;
+        const a = (to - from) / Math.max(tr, 1e-6);
+        if (Math.abs(a) < 1e-6) return dist / Math.max(0.5, v0);
+        const disc = v0 * v0 + 2 * a * dist;
+        if (disc <= 0) return tr;
+        return Math.max(0, (-v0 + Math.sqrt(disc)) / a);
       }
-      return tb + (dist - db) / Math.max(0.5, to - pedVxRel);
+      return tr + (dist - dr) / Math.max(0.5, to - pedVxRel);
     };
-    const tEnter = tAt(ahead - passReach);
-    const tExit = tAt(ahead + passReach);
+    // Prédiction bornée : au-delà de deux horizons, l'extrapolation n'a plus de sens.
+    const tMax = 2 * config.predictionHorizon * this.type.horizonFactor;
+    const tEnter = Math.min(tMax, tAt(ahead - passReach));
+    const tExit = Math.min(tMax, tAt(ahead + passReach));
     const yEnter = ped.y + ped.vy * tEnter;
     const yExit = ped.y + ped.vy * tExit;
     return { tEnter, yLow: Math.min(yEnter, yExit), yHigh: Math.max(yEnter, yExit) };
@@ -210,7 +263,9 @@ export class Scooter {
   }
 
   /** Avance d'un pas : vitesse vers la consigne, latéral vers le confort (ou l'évitement) + séparation. */
-  integrate(dt: number, yMin: number, yMax: number): void {
+  integrate(dt: number, roadHalf: number): void {
+    const yMax = roadHalf - this.width / 2;
+    const yMin = -yMax;
     this.prevX = this.x;
     this.prevY = this.y;
 
@@ -219,7 +274,7 @@ export class Scooter {
     // Longitudinal : croisière, bridée par le véhicule de devant et par l'évitement.
     const target = Math.min(this.cruise, this.speedLimit, this.avoidSpeed);
     const speed = this.vx * this.dir;
-    const rate = (target > speed ? config.scooterAccel : config.scooterDecel) * dt;
+    const rate = (target > speed ? config.scooterAccel * this.type.accelFactor : this.decel) * dt;
     const next = speed < target ? Math.min(speed + rate, target) : Math.max(speed - rate, target);
     this.vx = Math.max(0, next) * this.dir;
 
@@ -227,9 +282,10 @@ export class Scooter {
     let targetVy = avoiding
       ? (this.avoidY - this.y) * config.avoidGain + this.sepVy * config.avoidSepFactor
       : (this.comfortY - this.y) * config.comfortGain + this.sepVy;
-    if (targetVy > config.steerMax) targetVy = config.steerMax;
-    else if (targetVy < -config.steerMax) targetVy = -config.steerMax;
-    const latRate = config.scooterLatAccel * dt;
+    const steer = this.steerMax;
+    if (targetVy > steer) targetVy = steer;
+    else if (targetVy < -steer) targetVy = -steer;
+    const latRate = this.latAccel * dt;
     this.vy = this.vy < targetVy ? Math.min(this.vy + latRate, targetVy) : Math.max(this.vy - latRate, targetVy);
 
     this.x += this.vx * dt;
@@ -259,20 +315,44 @@ interface AvoidOption {
 
 const NO_OPTION = (): AvoidOption => ({ cost: Infinity, target: 0, speed: Infinity });
 
-/** Déplacement latéral atteignable en `t` secondes (m), partant de la vitesse latérale vy0, plafonné par steerMax. */
-function lateralReach(t: number, vy0: number): number {
-  const ramp = Math.max(0, config.steerMax - Math.abs(vy0) * 0.5) / config.scooterLatAccel;
-  return Math.max(0, config.steerMax * (t - ramp / 2));
+/** Déplacement latéral atteignable en `t` secondes (m), partant de la vitesse latérale vy0, plafonné par `steer`. */
+function lateralReach(t: number, vy0: number, steer: number, latAccel: number): number {
+  const ramp = Math.max(0, steer - Math.abs(vy0) * 0.5) / latAccel;
+  return Math.max(0, steer * (t - ramp / 2));
 }
 
 /**
- * Écart réel (m) entre le bord d'un cercle (centre px, py, rayon r) et le bord de la capsule du scooter.
- * Négatif = contact. Capsule approchée comme alignée sur l'axe de la rue.
+ * Écart réel (m) entre le bord d'un cercle (centre px, py, rayon r) et le bord du véhicule,
+ * modélisé en rectangle aux coins arrondis (capsule pour un scooter), aligné sur l'axe de la rue.
+ * Négatif = contact.
  */
 export function scooterGap(s: Scooter, px: number, py: number, r: number): number {
-  const halfW = config.scooterWidth / 2;
-  const halfSeg = config.scooterLength / 2 - halfW;
-  const dx = Math.max(Math.abs(px - s.x) - halfSeg, 0);
-  const dy = py - s.y;
-  return Math.hypot(dx, dy) - halfW - r;
+  const rc = Math.min(s.cornerRadius, s.width / 2);
+  const dx = Math.max(Math.abs(px - s.x) - (s.length / 2 - rc), 0);
+  const dy = Math.max(Math.abs(py - s.y) - (s.width / 2 - rc), 0);
+  return Math.hypot(dx, dy) - rc - r;
+}
+
+/**
+ * Repousse un cercle hors d'un véhicule (contact à faible vitesse : le piéton est bloqué, pas renversé).
+ * Renvoie la nouvelle position du centre.
+ */
+export function pushOutOf(s: Scooter, px: number, py: number, r: number): { x: number; y: number } {
+  const rc = Math.min(s.cornerRadius, s.width / 2);
+  const hx = s.length / 2 - rc;
+  const hy = s.width / 2 - rc;
+  const cx = Math.max(s.x - hx, Math.min(s.x + hx, px));
+  const cy = Math.max(s.y - hy, Math.min(s.y + hy, py));
+  let nx = px - cx;
+  let ny = py - cy;
+  let d = Math.hypot(nx, ny);
+  if (d < 1e-6) {
+    // Centre à l'intérieur du noyau : on sort par le côté le plus proche (en y, vers le piéton).
+    nx = 0;
+    ny = py >= s.y ? 1 : -1;
+    d = 1;
+    return { x: px, y: s.y + ny * (s.width / 2 + r + 0.01) };
+  }
+  const k = (rc + r + 0.01) / d;
+  return { x: cx + nx * k, y: cy + ny * k };
 }

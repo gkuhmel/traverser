@@ -46,14 +46,18 @@ export class Pedestrian {
   /**
    * @param walking  le piéton doit-il avancer ?
    * @param lateral  consigne latérale dans [-1, 1] (fraction de lateralMaxSpeed)
+   * @param speedMul multiplicateur de la vitesse de marche (accélération)
    */
-  update(dt: number, walking: boolean, lateral: number): void {
+  update(dt: number, walking: boolean, lateral: number, speedMul = 1): void {
     this.savePrev();
 
     // Vitesse d'avance : rampe linéaire vers la consigne (pas de marche arrière).
-    const targetForward = walking ? config.walkSpeed : 0;
+    const targetForward = walking ? config.walkSpeed * speedMul : 0;
     let forward = this.vy * this.dir;
-    forward = approach(forward, targetForward, (targetForward > forward ? config.pedAccel : config.pedDecel) * dt);
+    // Au-delà de la vitesse de marche (accélération), la rampe est plus douce, dans les deux sens.
+    const beyondWalk = Math.max(forward, targetForward) > config.walkSpeed + 1e-6 && targetForward > 0;
+    const rate = beyondWalk ? config.sprintAccel : targetForward > forward ? config.pedAccel : config.pedDecel;
+    forward = approach(forward, targetForward, rate * dt);
     this.vy = forward * this.dir;
 
     // Dérive latérale, uniquement pendant la marche.

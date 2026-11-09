@@ -25,10 +25,22 @@ const COLORS = {
   seat: 'rgba(25, 20, 18, 0.75)',
   headlight: '#fff6c8',
   taillight: '#d8433a',
+  tire: '#1d1a18',
+  canopy: '#e9dcc0',
+  canopyLine: 'rgba(120, 90, 50, 0.35)',
+  windshield: '#2b3a44',
+  boxLine: 'rgba(0, 0, 0, 0.18)',
 };
 
 /** Carrosseries : palette chaude (lanternes, ocre, vert d'eau) + quelques neutres. Taille = SCOOTER_COLOR_COUNT. */
 const SCOOTER_COLORS = ['#c8432f', '#e08a2c', '#d9b23e', '#5fa39a', '#3f7fa8', '#8e5aa0', '#e9e1d2', '#6b6f73'];
+/** Chemises des cyclistes. */
+const SHIRT_COLORS = ['#e9e1d2', '#5fa39a', '#c8432f', '#3f7fa8', '#d9b23e'];
+/** Tuk-tuks : vert d'eau, ocre, rouge lanterne, bleu. */
+const TUKTUK_COLORS = ['#3f9d8f', '#d9922c', '#b8392b', '#3f6fa8'];
+/** Petits camions : cabine colorée, caisse neutre (bâche). */
+const TRUCK_CAB_COLORS = ['#3f6fa8', '#c8432f', '#e9e1d2', '#4b8a5a'];
+const TRUCK_BOX_COLORS = ['#8a9a7b', '#c9bfa8', '#5d7d96', '#b7a07a'];
 /** Casques des conducteurs. */
 const HELMET_COLORS = ['#f2c14e', '#e85d4a', '#3a7ca5', '#f4efe6', '#7bb37a', '#2b2b2b'];
 
@@ -231,38 +243,54 @@ export class Renderer {
 
   private drawScooters(game: Game, alpha: number): void {
     const { camera } = this;
-    const halfView = camera.viewWidthM / 2 + config.scooterLength;
-    const L = config.scooterLength;
-    const W = config.scooterWidth;
-
     for (const s of game.traffic.scooters) {
       const x = s.prevX + (s.x - s.prevX) * alpha;
-      if (Math.abs(x - camera.x) > halfView) continue;
+      if (Math.abs(x - camera.x) > camera.viewWidthM / 2 + s.length) continue;
       const y = s.prevY + (s.y - s.prevY) * alpha;
       const angle = Math.atan2(s.vy, s.vx === 0 ? s.dir : s.vx);
-      this.drawScooter(s, x, y, angle, L, W);
+      this.drawVehicle(s, x, y, angle);
     }
   }
 
-  private drawScooter(s: Scooter, x: number, y: number, angle: number, L: number, W: number): void {
+  /** Véhicule vu de dessus, avant = +x dans son repère local. */
+  private drawVehicle(s: Scooter, x: number, y: number, angle: number): void {
     const { ctx } = this;
+    const L = s.length;
+    const W = s.width;
+
     // Ombre décalée dans le repère de la rue (lumière fixe, quel que soit le sens).
     ctx.save();
     ctx.translate(x + 0.08, y + 0.1);
     ctx.rotate(angle);
     ctx.fillStyle = COLORS.scooterShadow;
-    roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
+    roundRect(ctx, -L / 2, -W / 2, L, W, Math.min(s.cornerRadius, W / 2));
     ctx.fill();
     ctx.restore();
 
-    // Carrosserie (avant = +x).
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
+    switch (s.kind) {
+      case 'bike':
+        this.drawBike(s, L, W);
+        break;
+      case 'tuktuk':
+        this.drawTuktuk(s, L, W);
+        break;
+      case 'truck':
+        this.drawTruck(s, L, W);
+        break;
+      default:
+        this.drawScooterBody(s, L, W);
+    }
+    ctx.restore();
+  }
+
+  private drawScooterBody(s: Scooter, L: number, W: number): void {
+    const { ctx } = this;
     ctx.fillStyle = SCOOTER_COLORS[s.colorIndex] ?? '#888';
     roundRect(ctx, -L / 2, -W / 2, L, W, W / 2);
     ctx.fill();
-
     // Selle, feu arrière, phare.
     ctx.fillStyle = COLORS.seat;
     roundRect(ctx, -L * 0.32, -W * 0.28, L * 0.42, W * 0.56, W * 0.25);
@@ -273,14 +301,106 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(L / 2 - 0.12, 0, 0.09, 0, Math.PI * 2);
     ctx.fill();
-
     // Conducteur : casque vu de dessus.
     ctx.fillStyle = HELMET_COLORS[s.colorIndex % HELMET_COLORS.length] ?? '#fff';
     ctx.beginPath();
     ctx.arc(0, 0, 0.2, 0, Math.PI * 2);
     ctx.fill();
+  }
 
-    ctx.restore();
+  /** Vélo : roues et cadre fins, cycliste au centre (épaules + chapeau). */
+  private drawBike(s: Scooter, L: number, W: number): void {
+    const { ctx } = this;
+    ctx.fillStyle = COLORS.tire;
+    roundRect(ctx, L / 2 - 0.55, -0.05, 0.55, 0.1, 0.05);
+    ctx.fill();
+    roundRect(ctx, -L / 2, -0.05, 0.55, 0.1, 0.05);
+    ctx.fill();
+    ctx.strokeStyle = SCOOTER_COLORS[s.colorIndex] ?? '#888';
+    ctx.lineWidth = 0.09;
+    ctx.beginPath();
+    ctx.moveTo(-L / 2 + 0.3, 0);
+    ctx.lineTo(L / 2 - 0.25, 0);
+    ctx.moveTo(L / 2 - 0.35, -W * 0.42);
+    ctx.lineTo(L / 2 - 0.35, W * 0.42);
+    ctx.stroke();
+    // Cycliste : épaules (chemise) et chapeau.
+    ctx.fillStyle = SHIRT_COLORS[s.colorIndex % SHIRT_COLORS.length] ?? '#ddd';
+    ctx.beginPath();
+    ctx.ellipse(-0.05, 0, 0.2, W * 0.62, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = COLORS.hat;
+    ctx.beginPath();
+    ctx.arc(-0.02, 0, 0.21, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** Tuk-tuk : cabine avant étroite (conducteur), banquette arrière sous une bâche. */
+  private drawTuktuk(s: Scooter, L: number, W: number): void {
+    const { ctx } = this;
+    const body = TUKTUK_COLORS[s.colorIndex % TUKTUK_COLORS.length] ?? '#3a8';
+    // Avant étroit.
+    ctx.fillStyle = body;
+    roundRect(ctx, L / 2 - 0.95, -W * 0.3, 0.95, W * 0.6, W * 0.28);
+    ctx.fill();
+    ctx.fillStyle = COLORS.headlight;
+    ctx.beginPath();
+    ctx.arc(L / 2 - 0.1, 0, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = HELMET_COLORS[s.colorIndex % HELMET_COLORS.length] ?? '#fff';
+    ctx.beginPath();
+    ctx.arc(L / 2 - 0.62, 0, 0.19, 0, Math.PI * 2);
+    ctx.fill();
+    // Caisse arrière + bâche à rayures.
+    ctx.fillStyle = body;
+    roundRect(ctx, -L / 2, -W / 2, L - 0.85, W, 0.25);
+    ctx.fill();
+    ctx.fillStyle = COLORS.canopy;
+    roundRect(ctx, -L / 2 + 0.08, -W / 2 + 0.08, L - 1.05, W - 0.16, 0.2);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.canopyLine;
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    for (let i = 1; i < 4; i++) {
+      const xx = -L / 2 + 0.08 + ((L - 1.05) * i) / 4;
+      ctx.moveTo(xx, -W / 2 + 0.12);
+      ctx.lineTo(xx, W / 2 - 0.12);
+    }
+    ctx.stroke();
+    ctx.fillStyle = COLORS.taillight;
+    ctx.fillRect(-L / 2 + 0.02, -W * 0.38, 0.06, 0.14);
+    ctx.fillRect(-L / 2 + 0.02, W * 0.38 - 0.14, 0.06, 0.14);
+  }
+
+  /** Petit camion : cabine colorée avec pare-brise, caisse bâchée nervurée. */
+  private drawTruck(s: Scooter, L: number, W: number): void {
+    const { ctx } = this;
+    const cab = 1.15;
+    ctx.fillStyle = TRUCK_CAB_COLORS[s.colorIndex % TRUCK_CAB_COLORS.length] ?? '#36c';
+    roundRect(ctx, L / 2 - cab, -W / 2 + 0.05, cab, W - 0.1, 0.25);
+    ctx.fill();
+    ctx.fillStyle = COLORS.windshield;
+    roundRect(ctx, L / 2 - 0.42, -W / 2 + 0.18, 0.26, W - 0.36, 0.08);
+    ctx.fill();
+    ctx.fillStyle = COLORS.headlight;
+    ctx.fillRect(L / 2 - 0.08, -W / 2 + 0.12, 0.07, 0.25);
+    ctx.fillRect(L / 2 - 0.08, W / 2 - 0.37, 0.07, 0.25);
+    // Caisse.
+    ctx.fillStyle = TRUCK_BOX_COLORS[s.colorIndex % TRUCK_BOX_COLORS.length] ?? '#ccc';
+    roundRect(ctx, -L / 2, -W / 2, L - cab - 0.06, W, 0.12);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.boxLine;
+    ctx.lineWidth = 0.05;
+    ctx.beginPath();
+    for (let i = 1; i < 6; i++) {
+      const xx = -L / 2 + ((L - cab - 0.06) * i) / 6;
+      ctx.moveTo(xx, -W / 2 + 0.1);
+      ctx.lineTo(xx, W / 2 - 0.1);
+    }
+    ctx.stroke();
+    ctx.fillStyle = COLORS.taillight;
+    ctx.fillRect(-L / 2, -W / 2 + 0.1, 0.07, 0.22);
+    ctx.fillRect(-L / 2, W / 2 - 0.32, 0.07, 0.22);
   }
 
   private drawPedestrian(game: Game, alpha: number): void {
@@ -296,6 +416,26 @@ export class Renderer {
     const sway = Math.sin(phase) * config.stepSway;
     const sx = x + Math.cos(heading + Math.PI / 2) * sway;
     const sy = y + Math.sin(heading + Math.PI / 2) * sway;
+
+    // Accélération : traînée de vitesse derrière le piéton.
+    if (game.sprintLeft > 0) {
+      const a = Math.min(1, game.sprintLeft / 0.3);
+      ctx.strokeStyle = `rgba(255, 211, 107, ${0.7 * a})`;
+      ctx.lineWidth = 0.06;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const bx = -Math.cos(heading);
+      const by = -Math.sin(heading);
+      for (let i = -1; i <= 1; i++) {
+        const ox = -by * i * 0.18;
+        const oy = bx * i * 0.18;
+        const start = r + 0.12 + Math.abs(i) * 0.08;
+        ctx.moveTo(sx + bx * start + ox, sy + by * start + oy);
+        ctx.lineTo(sx + bx * (start + 0.55 - Math.abs(i) * 0.15) + ox, sy + by * (start + 0.55 - Math.abs(i) * 0.15) + oy);
+      }
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
 
     // Ombre portée.
     ctx.fillStyle = COLORS.shadow;

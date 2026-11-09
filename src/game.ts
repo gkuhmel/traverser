@@ -3,7 +3,7 @@ import { config } from './config';
 import type { Input } from './input';
 import { Pedestrian } from './pedestrian';
 import { Rng } from './rng';
-import { scooterGap, type PedPerception } from './scooter';
+import { pushOutOf, scooterGap, type PedPerception } from './scooter';
 import { loadBest, saveBest } from './storage';
 import { Traffic } from './traffic';
 
@@ -41,6 +41,12 @@ export class Game {
    */
   canWalk = false;
 
+  /** Accélération : temps restant (s) et recharge restante (s). */
+  sprintLeft = 0;
+  sprintCooldownLeft = 0;
+  /** Temps écoulé depuis la fin de la dernière accélération (s). */
+  sinceSprint = Infinity;
+
   /** Debug : collisions ignorées (mais comptées). */
   invincible = false;
   /** Contacts survenus en mode invincible. */
@@ -59,7 +65,7 @@ export class Game {
   densityChangedAt = -Infinity;
 
   /** Ce que les scooters perçoivent du piéton : vitesse lissée avec retard (§5.2). */
-  readonly perception: PedPerception = { x: 0, y: 0, vx: 0, vy: 0, radius: config.pedRadius };
+  readonly perception: PedPerception = { x: 0, y: 0, vx: 0, vy: 0, radius: config.pedRadius, attentive: false };
   /** Effets de frôlement en cours. */
   readonly nearMissFx: NearMissFx[] = [];
   /** Scooter qui a percuté le piéton (pour le rendu). */
@@ -94,6 +100,9 @@ export class Game {
     this.densityLevel = 1;
     this.densityChangedAt = -Infinity;
     this.hitBy = null;
+    this.sprintLeft = 0;
+    this.sprintCooldownLeft = 0;
+    this.sinceSprint = Infinity;
     this.nearMissFx.length = 0;
     this.perception.vx = this.perception.vy = 0;
     this.updatePerception(config.fixedDt);
@@ -106,7 +115,11 @@ export class Game {
   private updatePerception(dt: number): void {
     const p = this.perception;
     const ped = this.ped;
-    const k = config.perceptionLag > 0 ? 1 - Math.exp(-dt / config.perceptionLag) : 1;
+    // Un piéton qui court se remarque : le retard de perception diminue pendant et juste après l'accélération.
+    const noticed = this.sprintLeft > 0 || this.sinceSprint < config.sprintLagTail;
+    const lag = noticed ? Math.min(config.perceptionLag, config.sprintPerceptionLag) : config.perceptionLag;
+    p.attentive = noticed;
+    const k = lag > 0 ? 1 - Math.exp(-dt / lag) : 1;
     p.vx += (ped.vx - p.vx) * k;
     p.vy += (ped.vy - p.vy) * k;
     p.x = ped.x;
@@ -118,6 +131,12 @@ export class Game {
     this.time += dt;
     this.phaseTime += dt;
     this.updateFx(dt);
+
+    if (this.phase !== 'playing') {
+      while (this.input.consumeSprint()) {
+        // pas d'accélération hors partie
+      }
+    }
 
     if (this.phase === 'hit') {
       // Arrêt du temps : on vide les appuis, puis écran de fin.
@@ -155,7 +174,8 @@ export class Game {
       ? (this.input.x - this.input.startX) / (this.camera.width * config.lateralFullDeflect)
       : 0;
 
-    this.ped.update(dt, walking, lateral);
+    this.updateSprint(dt, walking);
+    this.ped.update(dt, walking, lateral, this.sprintLeft > 0 ? config.sprintMultiplier : 1);
 
     // Densité : un palier toutes les densityInterval secondes de jeu.
     if (this.started) this.playTime += dt;
@@ -180,17 +200,51 @@ export class Game {
     this.checkContacts();
   }
 
+  /** L'accélération est-elle disponible ? */
+  get sprintReady(): boolean {
+    return this.sprintLeft <= 0 && this.sprintCooldownLeft <= 0;
+  }
+
+  /** Accélération : ne se déclenche qu'en marchant (sinon elle serait gâchée), puis recharge. */
+  private updateSprint(dt: number, walking: boolean): void {
+    let requested = false;
+    while (this.input.consumeSprint()) requested = true;
+    if (requested && walking && this.sprintReady) this.sprintLeft = config.sprintDuration;
+
+    if (this.sprintLeft > 0) {
+      this.sinceSprint = 0;
+      this.sprintLeft -= dt;
+      if (this.sprintLeft <= 0) {
+        this.sprintLeft = 0;
+        this.sprintCooldownLeft = config.sprintCooldown;
+      }
+      return;
+    }
+    this.sinceSprint += dt;
+    if (this.sprintCooldownLeft > 0) {
+      this.sprintCooldownLeft = Math.max(0, this.sprintCooldownLeft - dt);
+    }
+  }
+
   /** Collision (écart < 0) et frôlements (écart min < nearMissDistance, sans contact, une fois passé). */
   private checkContacts(): void {
     const p = this.ped;
     const r = config.pedRadius;
-    const passReach = config.scooterLength / 2 + r;
     for (const s of this.traffic.scooters) {
+      const passReach = s.length / 2 + r;
       const ahead = (p.x - s.x) * s.dir;
-      if (ahead > config.scooterLength + 2 || s.pedPassed) continue;
+      if (ahead > s.length + 2 || s.pedPassed) continue;
 
       const gap = scooterGap(s, p.x, p.y, r);
       if (gap < s.minPedGap) s.minPedGap = gap;
+
+      if (gap < 0 && Math.hypot(s.vx, s.vy) < config.lethalSpeed) {
+        // Véhicule presque arrêté : il bloque le piéton comme un obstacle, sans le renverser.
+        const out = pushOutOf(s, p.x, p.y, r);
+        p.x = out.x;
+        p.y = out.y;
+        continue;
+      }
 
       if (gap < 0 && !s.pedTouched) {
         s.pedTouched = true;

@@ -2,7 +2,7 @@ import type { Camera } from './camera';
 import { config } from './config';
 import type { Game } from './game';
 import type { LoopStats } from './loop';
-import { AiState } from './scooter';
+import { AiState, type VehicleKind } from './scooter';
 
 /**
  * Panneau de debug (?debug=1), §9. Chargé dynamiquement : rien n'est exécuté ni téléchargé sans le paramètre.
@@ -12,37 +12,69 @@ import { AiState } from './scooter';
  */
 
 type ConfigKey = { [K in keyof typeof config]: (typeof config)[K] extends number ? K : never }[keyof typeof config];
+type VehicleField = 'weight' | 'speedMin' | 'speedMax';
 
 interface SliderDef {
-  key: ConfigKey;
   label: string;
   min: number;
   max: number;
   step: number;
+  get: () => number;
+  set: (v: number) => void;
 }
+
+/** Curseur sur un réglage de premier niveau de `config`. */
+const top = (key: ConfigKey, label: string, min: number, max: number, step: number): SliderDef => ({
+  label,
+  min,
+  max,
+  step,
+  get: () => config[key],
+  set: (v) => {
+    config[key] = v;
+  },
+});
+
+/** Curseur sur un réglage d'un type de véhicule. */
+const veh = (kind: VehicleKind, field: VehicleField, label: string, min: number, max: number, step: number): SliderDef => ({
+  label,
+  min,
+  max,
+  step,
+  get: () => config.vehicles[kind][field],
+  set: (v) => {
+    config.vehicles[kind][field] = v;
+  },
+});
 
 const GROUPS: Record<string, SliderDef[]> = {
   IA: [
-    { key: 'perceptionLag', label: 'retard perception', min: 0, max: 1.5, step: 0.05 },
-    { key: 'commitTime', label: 'engagement', min: 0, max: 1.5, step: 0.05 },
-    { key: 'predictionHorizon', label: 'horizon', min: 0.3, max: 3, step: 0.1 },
-    { key: 'safeDistance', label: 'écart visé', min: 0, max: 2, step: 0.05 },
-    { key: 'panicDistance', label: 'écart panique', min: 0, max: 1.5, step: 0.05 },
-    { key: 'steerMax', label: 'vit. latérale max', min: 0.5, max: 5, step: 0.1 },
-    { key: 'brakeMax', label: 'freinage max', min: 0, max: 0.9, step: 0.05 },
-    { key: 'awarenessRange', label: 'portée réaction', min: 3, max: 30, step: 0.5 },
-    { key: 'scooterSpeedMin', label: 'vitesse min', min: 2, max: 12, step: 0.5 },
-    { key: 'scooterSpeedMax', label: 'vitesse max', min: 2, max: 14, step: 0.5 },
+    top('perceptionLag', 'retard perception', 0, 1.5, 0.05),
+    top('commitTime', 'engagement', 0, 1.5, 0.05),
+    top('predictionHorizon', 'horizon', 0.3, 3, 0.1),
+    top('safeDistance', 'écart visé', 0, 2, 0.05),
+    top('panicDistance', 'écart panique', 0, 1.5, 0.05),
+    top('steerMax', 'vit. latérale max', 0.5, 5, 0.1),
+    top('brakeMax', 'freinage max', 0, 0.9, 0.05),
+    top('awarenessRange', 'portée réaction', 3, 30, 0.5),
   ],
   Densité: [
-    { key: 'spawnRateStart', label: 'débit initial', min: 0.2, max: 8, step: 0.1 },
-    { key: 'spawnRateStep', label: 'hausse / palier', min: 0, max: 2, step: 0.1 },
-    { key: 'spawnRateMax', label: 'débit max', min: 0.5, max: 10, step: 0.5 },
-    { key: 'densityInterval', label: 'durée palier', min: 5, max: 60, step: 1 },
-    { key: 'burstMultiplier', label: 'rafale ×', min: 1, max: 4, step: 0.1 },
-    { key: 'lullMultiplier', label: 'creux ×', min: 0, max: 1, step: 0.05 },
-    { key: 'burstChance', label: 'part rafales', min: 0, max: 0.5, step: 0.05 },
-    { key: 'lullChance', label: 'part creux', min: 0, max: 0.5, step: 0.05 },
+    top('spawnRateStart', 'débit initial', 0.2, 8, 0.1),
+    top('spawnRateStep', 'hausse / palier', 0, 2, 0.1),
+    top('spawnRateMax', 'débit max', 0.5, 10, 0.5),
+    top('densityInterval', 'durée palier', 5, 60, 1),
+    top('burstMultiplier', 'rafale ×', 1, 4, 0.1),
+    top('lullMultiplier', 'creux ×', 0, 1, 0.05),
+    top('burstChance', 'part rafales', 0, 0.5, 0.05),
+    top('lullChance', 'part creux', 0, 0.5, 0.05),
+  ],
+  Véhicules: [
+    veh('scooter', 'weight', 'part scooters', 0, 1, 0.01),
+    veh('bike', 'weight', 'part vélos', 0, 1, 0.01),
+    veh('tuktuk', 'weight', 'part tuk-tuks', 0, 1, 0.01),
+    veh('truck', 'weight', 'part camions', 0, 1, 0.01),
+    veh('scooter', 'speedMin', 'scooter v min', 2, 12, 0.5),
+    veh('scooter', 'speedMax', 'scooter v max', 2, 14, 0.5),
   ],
 };
 
@@ -69,7 +101,7 @@ export class DebugPanel {
   private readonly sliderBox: HTMLDivElement;
   private readonly pauseBtn: HTMLButtonElement;
   private readonly invBtn: HTMLButtonElement;
-  private readonly defaults: Record<string, number> = {};
+  private readonly defaults = new Map<SliderDef, number>();
   private openGroup: string | null = null;
   private collapsed = false;
   private readonly controls: HTMLElement[] = [];
@@ -91,14 +123,15 @@ export class DebugPanel {
     private readonly game: Game,
   ) {
     stats.measure = true;
-    for (const defs of Object.values(GROUPS)) for (const d of defs) this.defaults[d.key] = config[d.key];
+    for (const defs of Object.values(GROUPS)) for (const d of defs) this.defaults.set(d, d.get());
 
     const root = document.createElement('div');
     Object.assign(root.style, {
       position: 'fixed',
       bottom: 'calc(env(safe-area-inset-bottom, 0px) + 6px)',
       left: '6px',
-      right: '6px',
+      // Laisse la place du bouton d'accélération en bas à droite.
+      right: 'calc(env(safe-area-inset-right, 0px) + 104px)',
       maxWidth: '420px',
       padding: '5px 7px',
       font: '11px/1.35 ui-monospace, Menlo, monospace',
@@ -130,6 +163,7 @@ export class DebugPanel {
       this.invBtn,
       this.button('IA', () => this.toggleGroup('IA')),
       this.button('densité', () => this.toggleGroup('Densité')),
+      this.button('véhicules', () => this.toggleGroup('Véhicules')),
       this.button('−2/s', () => this.bump(-2)),
       this.button('+2/s', () => this.bump(2)),
     );
@@ -197,7 +231,7 @@ export class DebugPanel {
     if (!this.openGroup) return;
     for (const def of GROUPS[name] ?? []) this.sliderBox.appendChild(this.slider(def));
     const reset = this.button('valeurs par défaut', () => {
-      for (const def of GROUPS[name] ?? []) config[def.key] = this.defaults[def.key] ?? config[def.key];
+      for (const def of GROUPS[name] ?? []) def.set(this.defaults.get(def) ?? def.get());
       this.toggleGroup(name);
       this.toggleGroup(name);
     });
@@ -223,9 +257,9 @@ export class DebugPanel {
     row.append(label, track, value);
 
     const show = (): void => {
-      const v = config[def.key];
+      const v = def.get();
       fill.style.width = `${((v - def.min) / (def.max - def.min)) * 100}%`;
-      const changed = Math.abs(v - (this.defaults[def.key] ?? v)) > 1e-9;
+      const changed = Math.abs(v - (this.defaults.get(def) ?? v)) > 1e-9;
       value.textContent = String(+v.toFixed(2));
       value.style.color = changed ? '#f6ad55' : '#fff';
     };
@@ -233,7 +267,7 @@ export class DebugPanel {
       const rect = track.getBoundingClientRect();
       const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       const raw = def.min + t * (def.max - def.min);
-      config[def.key] = Math.round(raw / def.step) * def.step;
+      def.set(Math.round(raw / def.step) * def.step);
       show();
     };
     track.addEventListener('pointerdown', (e) => {
@@ -279,7 +313,7 @@ export class DebugPanel {
       // Replié, ou curseurs ouverts : une seule ligne pour laisser voir la rue.
       const q = g.perception;
       this.text.textContent =
-        `fps ${this.lastFps.toFixed(0)}  scooters ${t.scooters.length}  perçu ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s  ` +
+        `fps ${this.lastFps.toFixed(0)}  véhicules ${t.scooters.length}  perçu ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s  ` +
         (this.collapsed ? '▸' : '▾');
       return;
     }
@@ -288,25 +322,28 @@ export class DebugPanel {
     const p = g.ped;
     const q = g.perception;
     this.text.textContent =
-      `fps ${this.lastFps.toFixed(0)}  simu ${this.lastUpdateMs.toFixed(2)} ms  rendu ${this.lastRenderMs.toFixed(2)} ms  pas max ${this.lastMaxSteps}  ▾\n` +
-      `écran ${this.camera.width}×${this.camera.height}  dpr ${this.getDpr()}  ${this.camera.scale.toFixed(1)} px/m\n` +
-      `piéton réel   ${fmtVec(p.vx, p.vy)}  |v| ${Math.hypot(p.vx, p.vy).toFixed(2)} m/s\n` +
-      `piéton perçu  ${fmtVec(q.vx, q.vy)}  |v| ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s\n` +
-      `scooters ${t.scooters.length}  en évitement ${reacting}  débit ${t.effectiveRate.toFixed(1)}/s → ${t.currentRate.toFixed(1)}/s ${FLOW_LABEL[t.flow]}\n` +
-      `densité ${g.densityLevel}  temps ${g.playTime.toFixed(0)} s  graine ${g.seed}\n` +
-      `frôlements ${g.nearMisses}` + (g.invincible ? `  contacts ignorés ${g.ghostHits}` : '');
+      `fps ${this.lastFps.toFixed(0)}  pas max ${this.lastMaxSteps}  ▾\n` +
+      `simu ${this.lastUpdateMs.toFixed(2)} ms  rendu ${this.lastRenderMs.toFixed(2)} ms\n` +
+      `écran ${this.camera.width}×${this.camera.height} dpr ${this.getDpr()}\n` +
+      `réel  ${fmtVec(p.vx, p.vy)} ${Math.hypot(p.vx, p.vy).toFixed(2)} m/s\n` +
+      `perçu ${fmtVec(q.vx, q.vy)} ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s\n` +
+      `véhicules ${t.scooters.length}  en évitement ${reacting}\n` +
+      `débit ${t.effectiveRate.toFixed(1)}/s → ${t.currentRate.toFixed(1)}/s ${FLOW_LABEL[t.flow]}\n` +
+      `densité ${g.densityLevel}  temps ${g.playTime.toFixed(0)} s\ngraine ${g.seed}\n` +
+      `frôlements ${g.nearMisses}` + (g.invincible ? `  contacts ignorés ${g.ghostHits}` : '') +
+      (g.sprintLeft > 0 ? `  ACCÉLÉRATION ${g.sprintLeft.toFixed(1)} s` : g.sprintCooldownLeft > 0 ? `  recharge ${g.sprintCooldownLeft.toFixed(1)} s` : '');
   }
 
   // --- Surcouche dessinée dans le monde (mètres) ---
 
   drawOverlay(ctx: CanvasRenderingContext2D, alpha: number, px: number): void {
     const g = this.game;
-    const L = config.scooterLength;
-    const W = config.scooterWidth;
     const r = config.pedRadius;
 
     for (const s of g.traffic.scooters) {
       if (s.ai === AiState.Idle) continue;
+      const L = s.length;
+      const W = s.width;
       const x = s.prevX + (s.x - s.prevX) * alpha;
       const y = s.prevY + (s.y - s.prevY) * alpha;
 

@@ -5,12 +5,14 @@ import { Game } from './game';
 import { Input } from './input';
 import { startLoop, type LoopStats } from './loop';
 import { Renderer } from './render';
+import { SprintButton } from './sprint-button';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const camera = new Camera();
 const renderer = new Renderer(canvas, camera);
 const input = new Input(canvas);
 const game = new Game(input, camera);
+const sprintButton = new SprintButton(input);
 
 // Sonde CSS pour lire la marge de sécurité haute (encoche) : env() n'est pas accessible en JS.
 const safeProbe = document.createElement('div');
@@ -55,6 +57,7 @@ startLoop(
   },
   (alpha) => {
     renderer.render(game, debugPanel?.paused ? 1 : alpha);
+    sprintButton.update(game);
     onFrame?.();
   },
   stats,

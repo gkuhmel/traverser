@@ -50,13 +50,23 @@ export const config = {
   /** Vitesse de demi-tour visuel (rad/s). */
   turnRate: 9,
 
-  // --- Scooters : mouvement de base (§5.1) ---
-  /** Vitesse de croisière tirée au hasard dans [min, max] (m/s). */
-  scooterSpeedMin: 6,
-  scooterSpeedMax: 9,
-  /** Dimensions de la capsule (m). */
-  scooterLength: 1.8,
-  scooterWidth: 0.7,
+  // --- Accélération (ajout hors spec, demandé) ---
+  /** Multiplicateur de walkSpeed pendant l'accélération. */
+  sprintMultiplier: 1.7,
+  /** Durée de l'accélération (s). */
+  sprintDuration: 1.5,
+  /** Temps de recharge après la fin de l'accélération (s). */
+  sprintCooldown: 6,
+  /** Accélération / décélération du piéton vers et depuis la vitesse d'accélération (m/s²) : plus douce. */
+  sprintAccel: 3,
+  /** Un piéton qui court se remarque : retard de perception (s) pendant l'accélération et sprintLagTail après. */
+  sprintPerceptionLag: 0.15,
+  sprintLagTail: 0.8,
+  /** … et les conducteurs, attentifs, ne s'engagent que pour cette durée (s) au lieu de commitTime. */
+  sprintCommitTime: 0.15,
+
+  // --- Véhicules : mouvement de base (§5.1) ---
+  // Les réglages ci-dessous sont ceux du scooter ; chaque type de véhicule les module (voir `vehicles`).
   /** Accélération / freinage longitudinal (m/s²). */
   scooterAccel: 3,
   scooterDecel: 8,
@@ -68,20 +78,42 @@ export const config = {
   comfortGain: 0.8,
   /** Marge entre les scooters et les bordures (m). */
   streetEdgeMargin: 0.3,
-  /** Séparation : portée longitudinale et latérale de la répulsion (m). */
-  sepRangeX: 3,
-  sepRangeY: 1.4,
+  /** Séparation : portée de la répulsion au-delà du contact, en longitudinal et en latéral (m). */
+  sepMarginX: 1.2,
+  sepMarginY: 0.7,
   /** Séparation : vitesse latérale de répulsion max (m/s). */
   sepStrength: 2,
-  /** Écart minimal garanti entre deux scooters (m) : contrainte dure, jamais de superposition. */
+  /** Écart minimal garanti entre deux véhicules (m) : contrainte dure, jamais de superposition. */
   scooterGapMin: 0.1,
   /** Suivi : écart mini pare-chocs à pare-chocs (m) et raideur (1/s). */
   followGap: 0.8,
   followGain: 2.5,
+  /** Dépassement : un véhicule bridé de plus de overtakeDeficit (m/s) pendant overtakeDelay (s)
+   *  déboîte du côté libre, à overtakeMargin (m) du véhicule lent. Évite les bouchons. */
+  overtakeDeficit: 0.8,
+  overtakeDelay: 0.4,
+  overtakeMargin: 0.4,
   /** Abscisse d'apparition (m, hors écran à gauche) : laisse à l'IA la place d'anticiper. */
   spawnX: -22,
   /** Abscisse de disparition (m, hors écran à droite). */
   despawnX: 12,
+  /**
+   * Types de véhicules (ajout hors spec, demandé). Tous jouent le jeu de l'évitement, avec leur gabarit :
+   * - weight : part dans le trafic ; length / width / cornerRadius (m) ;
+   * - speedMin / speedMax : vitesse de croisière (m/s) ;
+   * - steerFactor / latAccelFactor / accelFactor / decelFactor : agilité relative au scooter
+   *   (multiplient steerMax, scooterLatAccel, scooterAccel, scooterDecel) ;
+   * - brakeMaxFactor : multiplie brakeMax (plafonné à 0,85 : jamais l'arrêt complet) ;
+   * - brakeCostFactor : multiplie brakeCost (< 1 : préfère ralentir plutôt que dévier) ;
+   * - horizonFactor : multiplie predictionHorizon (les gros véhicules anticipent plus tôt) ;
+   * - mass : poids relatif quand deux véhicules se poussent (le plus lourd bouge moins).
+   */
+  vehicles: {
+    scooter: { weight: 0.62, length: 1.8, width: 0.7, cornerRadius: 0.35, speedMin: 6, speedMax: 9, steerFactor: 1, latAccelFactor: 1, accelFactor: 1, decelFactor: 1, brakeMaxFactor: 1, brakeCostFactor: 1, horizonFactor: 1, mass: 1 },
+    bike: { weight: 0.16, length: 1.7, width: 0.5, cornerRadius: 0.25, speedMin: 3.5, speedMax: 5, steerFactor: 1, latAccelFactor: 1, accelFactor: 0.5, decelFactor: 1, brakeMaxFactor: 0.7, brakeCostFactor: 1.5, horizonFactor: 2, mass: 0.6 },
+    tuktuk: { weight: 0.13, length: 2.6, width: 1.3, cornerRadius: 0.4, speedMin: 4.5, speedMax: 6.5, steerFactor: 0.55, latAccelFactor: 0.5, accelFactor: 0.6, decelFactor: 1, brakeMaxFactor: 1.8, brakeCostFactor: 0.3, horizonFactor: 1.5, mass: 2.5 },
+    truck: { weight: 0.09, length: 4.2, width: 1.8, cornerRadius: 0.25, speedMin: 5, speedMax: 7, steerFactor: 0.4, latAccelFactor: 0.35, accelFactor: 0.4, decelFactor: 0.9, brakeMaxFactor: 2.2, brakeCostFactor: 0.2, horizonFactor: 1.8, mass: 6 },
+  },
   /** Double sens (test) : le haut de la rue roule de droite à gauche. */
   twoWay: false,
   /** Durée simulée avant le début (s) : la rue est déjà pleine à l'ouverture. */
@@ -127,6 +159,8 @@ export const config = {
   /** Amplitude (m) et durée (s) du tremblement d'écran à l'impact. */
   shakeAmplitude: 0.25,
   shakeDuration: 0.3,
+  /** Sous cette vitesse (m/s), un véhicule touché ne renverse pas : le piéton est simplement bloqué. */
+  lethalSpeed: 1.5,
   /** Frôlement : scooter passé à moins de cet écart (m) sans contact. Spec : 0,8 ; ramené à 0,4, juste sous
    *  safeDistance (0,5), sinon chaque évitement normal compte comme un frôlement (3 à 12 par traversée). */
   nearMissDistance: 0.4,

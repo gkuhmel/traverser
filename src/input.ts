@@ -15,6 +15,7 @@ export class Input {
   private pointerId: number | null = null;
   private pendingPresses = 0;
   private pendingReleases = 0;
+  private pendingSprints = 0;
 
   constructor(target: HTMLElement) {
     target.addEventListener('pointerdown', this.onDown);
@@ -36,6 +37,20 @@ export class Input {
   consumePress(): boolean {
     if (this.pendingPresses > 0) {
       this.pendingPresses--;
+      return true;
+    }
+    return false;
+  }
+
+  /** Demande d'accélération (bouton dédié, utilisable avec un second doigt). */
+  requestSprint(): void {
+    this.pendingSprints++;
+  }
+
+  /** Renvoie true une fois par demande d'accélération. */
+  consumeSprint(): boolean {
+    if (this.pendingSprints > 0) {
+      this.pendingSprints--;
       return true;
     }
     return false;
