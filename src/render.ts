@@ -344,9 +344,11 @@ export class Renderer {
     ctx.font = '600 34px -apple-system, system-ui, sans-serif';
     ctx.fillText(String(game.crossings), cx, top);
 
-    // Niveau de densité, discret.
-    ctx.fillStyle = COLORS.hudDim;
-    ctx.font = '13px -apple-system, system-ui, sans-serif';
+    // Niveau de densité, discret ; il s'éclaire brièvement à chaque nouveau palier.
+    const since = game.time - game.densityChangedAt;
+    const glow = since < config.densityFlashDuration ? 1 - since / config.densityFlashDuration : 0;
+    ctx.fillStyle = glow > 0 ? `rgba(246, 195, 91, ${0.55 + 0.45 * glow})` : COLORS.hudDim;
+    ctx.font = `${glow > 0 ? '600 ' : ''}13px -apple-system, system-ui, sans-serif`;
     ctx.textAlign = 'right';
     ctx.fillText(`densité ${game.densityLevel}`, camera.width - 14, top + 4);
     ctx.textAlign = 'center';

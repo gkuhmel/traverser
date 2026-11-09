@@ -39,6 +39,10 @@ const GROUPS: Record<string, SliderDef[]> = {
     { key: 'spawnRateStep', label: 'hausse / palier', min: 0, max: 2, step: 0.1 },
     { key: 'spawnRateMax', label: 'débit max', min: 0.5, max: 10, step: 0.5 },
     { key: 'densityInterval', label: 'durée palier', min: 5, max: 60, step: 1 },
+    { key: 'burstMultiplier', label: 'rafale ×', min: 1, max: 4, step: 0.1 },
+    { key: 'lullMultiplier', label: 'creux ×', min: 0, max: 1, step: 0.05 },
+    { key: 'burstChance', label: 'part rafales', min: 0, max: 0.5, step: 0.05 },
+    { key: 'lullChance', label: 'part creux', min: 0, max: 0.5, step: 0.05 },
   ],
 };
 
@@ -50,6 +54,8 @@ const OVERLAY = {
   realVel: '#ffffff',
   perceivedVel: '#ff6ad5',
 };
+
+const FLOW_LABEL = { normal: '', burst: '(rafale)', lull: '(creux)' } as const;
 
 /** Durée d'un « pas » en mode pause (s). */
 const STEP_DURATION = 0.1;
@@ -286,7 +292,7 @@ export class DebugPanel {
       `écran ${this.camera.width}×${this.camera.height}  dpr ${this.getDpr()}  ${this.camera.scale.toFixed(1)} px/m\n` +
       `piéton réel   ${fmtVec(p.vx, p.vy)}  |v| ${Math.hypot(p.vx, p.vy).toFixed(2)} m/s\n` +
       `piéton perçu  ${fmtVec(q.vx, q.vy)}  |v| ${Math.hypot(q.vx, q.vy).toFixed(2)} m/s\n` +
-      `scooters ${t.scooters.length}  en évitement ${reacting}  débit ${t.effectiveRate.toFixed(1)}/s\n` +
+      `scooters ${t.scooters.length}  en évitement ${reacting}  débit ${t.effectiveRate.toFixed(1)}/s → ${t.currentRate.toFixed(1)}/s ${FLOW_LABEL[t.flow]}\n` +
       `densité ${g.densityLevel}  temps ${g.playTime.toFixed(0)} s  graine ${g.seed}\n` +
       `frôlements ${g.nearMisses}` + (g.invincible ? `  contacts ignorés ${g.ghostHits}` : '');
   }

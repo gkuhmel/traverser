@@ -144,6 +144,17 @@ export const config = {
   spawnRateMax: 5,
   /** Durée d'un palier de densité (s). */
   densityInterval: 20,
+  /** Durée du surlignage du niveau de densité à chaque nouveau palier (s). */
+  densityFlashDuration: 1.5,
+  /** Rafales et creux : probabilité de chaque type de tronçon (le reste = flux normal). */
+  burstChance: 0.25,
+  lullChance: 0.25,
+  /** Multiplicateur du débit pendant une rafale / un creux (moyenne globale ≈ 1). */
+  burstMultiplier: 1.8,
+  lullMultiplier: 0.3,
+  /** Durée d'un tronçon de flux, tirée dans [min, max] (s). */
+  flowSegmentMin: 1.5,
+  flowSegmentMax: 4,
   /** Intervalle minimal entre deux apparitions (s). */
   spawnMinInterval: 0.03,
 };

@@ -55,6 +55,8 @@ export class Game {
   started = false;
   /** Palier de densité courant (1, 2, 3…). */
   densityLevel = 1;
+  /** Temps de simulation du dernier changement de palier (s), pour signaler la montée à l'écran. */
+  densityChangedAt = -Infinity;
 
   /** Ce que les scooters perçoivent du piéton : vitesse lissée avec retard (§5.2). */
   readonly perception: PedPerception = { x: 0, y: 0, vx: 0, vy: 0, radius: config.pedRadius };
@@ -90,6 +92,7 @@ export class Game {
     this.playTime = 0;
     this.started = false;
     this.densityLevel = 1;
+    this.densityChangedAt = -Infinity;
     this.hitBy = null;
     this.nearMissFx.length = 0;
     this.perception.vx = this.perception.vy = 0;
@@ -156,7 +159,11 @@ export class Game {
 
     // Densité : un palier toutes les densityInterval secondes de jeu.
     if (this.started) this.playTime += dt;
-    this.densityLevel = 1 + Math.floor(this.playTime / config.densityInterval);
+    const level = 1 + Math.floor(this.playTime / config.densityInterval);
+    if (level !== this.densityLevel) {
+      this.densityLevel = level;
+      this.densityChangedAt = this.time;
+    }
     this.traffic.spawnRate = Math.min(
       config.spawnRateStart + config.spawnRateStep * (this.densityLevel - 1),
       config.spawnRateMax,

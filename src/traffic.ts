@@ -5,6 +5,8 @@ import { Scooter, type PedPerception } from './scooter';
 /** Nombre de couleurs de carrosserie (palette définie dans le rendu). */
 export const SCOOTER_COLOR_COUNT = 8;
 
+export type FlowKind = 'normal' | 'burst' | 'lull';
+
 /** Gestion du flux : apparitions, séparation entre scooters, disparitions. */
 export class Traffic {
   readonly scooters: Scooter[] = [];
@@ -12,17 +14,37 @@ export class Traffic {
   spawnRate = config.spawnRateStart;
   /** Bonus de débit réglable depuis le debug (test de charge), hors plafond. */
   debugRateBonus = 0;
-  private spawnTimer = 0;
+
+  /** Rafales et creux (§7) : multiplicateur du débit, constant par tronçon de durée aléatoire. */
+  flow: FlowKind = 'normal';
+  flowMultiplier = 1;
+  private flowTimer = 0;
+
+  /**
+   * Apparitions en processus de Poisson à débit variable : on cumule « débit × dt » et on fait
+   * apparaître un scooter chaque fois que le cumul dépasse un seuil exponentiel. Le flux reste
+   * irrégulier même quand le débit change en cours de route.
+   */
+  private exposure = 0;
+  private threshold = 1;
+  private sinceSpawn = 0;
 
   constructor(private readonly rng: Rng) {
-    this.spawnTimer = this.nextInterval();
+    this.threshold = this.nextThreshold();
+    this.nextFlowSegment();
   }
 
   update(dt: number, time: number, ped: PedPerception): void {
-    this.spawnTimer -= dt;
-    while (this.spawnTimer <= 0) {
+    this.flowTimer -= dt;
+    if (this.flowTimer <= 0) this.nextFlowSegment();
+
+    this.sinceSpawn += dt;
+    this.exposure += this.currentRate * dt;
+    if (this.exposure >= this.threshold && this.sinceSpawn >= config.spawnMinInterval) {
+      this.exposure -= this.threshold;
+      this.threshold = this.nextThreshold();
+      this.sinceSpawn = 0;
       this.spawn();
-      this.spawnTimer += this.nextInterval();
     }
 
     this.computeInteractions();
@@ -44,15 +66,34 @@ export class Traffic {
     }
   }
 
-  /** Débit effectif, bonus de debug compris. */
+  /** Débit moyen effectif, bonus de debug compris (scooters/s). */
   get effectiveRate(): number {
     return this.spawnRate + this.debugRateBonus;
   }
 
-  /** Intervalle exponentiel (processus de Poisson) : flux irrégulier, jamais en grille. */
-  private nextInterval(): number {
-    const rate = Math.max(0.01, this.effectiveRate);
-    return Math.max(config.spawnMinInterval, -Math.log(1 - this.rng.next()) / rate);
+  /** Débit instantané, rafale ou creux compris (scooters/s). */
+  get currentRate(): number {
+    return this.effectiveRate * this.flowMultiplier;
+  }
+
+  private nextThreshold(): number {
+    return -Math.log(1 - this.rng.next());
+  }
+
+  /** Tire le prochain tronçon : rafale, creux ou flux normal, pour une durée aléatoire. */
+  private nextFlowSegment(): void {
+    const r = this.rng.next();
+    if (r < config.burstChance) {
+      this.flow = 'burst';
+      this.flowMultiplier = config.burstMultiplier;
+    } else if (r < config.burstChance + config.lullChance) {
+      this.flow = 'lull';
+      this.flowMultiplier = config.lullMultiplier;
+    } else {
+      this.flow = 'normal';
+      this.flowMultiplier = 1;
+    }
+    this.flowTimer = this.rng.range(config.flowSegmentMin, config.flowSegmentMax);
   }
 
   private spawn(): void {
