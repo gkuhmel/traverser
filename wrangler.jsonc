@@ -1,0 +1,9 @@
+// Déploiement Cloudflare Workers : site 100 % statique servi depuis dist/ (aucun code serveur).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "traverser",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}

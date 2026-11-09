@@ -22,7 +22,7 @@ Jeu web mobile (Safari iPhone, portrait) : traverser une rue de Hanoï saturée 
 ## Commandes
 - `npm run dev -- --host` pour tester sur iPhone sur le réseau local.
 - `npm run build` doit passer sans erreur TypeScript avant chaque fin d'étape.
-- Déploiement prévu sur Cloudflare Pages (sortie `dist/`).
+- `npm run deploy` : build puis déploiement sur Cloudflare Workers via wrangler (assets statiques de `dist/`, config dans `wrangler.jsonc`).
 
 ## Langue
 - Code et noms de variables en anglais ; commentaires, messages de commit et échanges en français.

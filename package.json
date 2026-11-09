@@ -6,10 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && wrangler deploy",
+    "preview:worker": "npm run build && wrangler dev"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
-    "vite": "^8.3.7"
+    "vite": "^8.3.7",
+    "wrangler": "^4.159.0"
   }
 }

@@ -42,7 +42,7 @@ C'est l'inverse de *Frogger* : on ne cherche pas un trou dans le trafic, on fait
 - Monde en **unités logiques** (mètres) indépendantes de la taille d'écran ; une caméra convertit en pixels.
 - Tous les paramètres réglables regroupés dans `src/config.ts`.
 - `localStorage` uniquement pour le meilleur score, encapsulé dans un `try/catch`.
-- Déploiement : Cloudflare Pages (comme les autres projets).
+- Déploiement : Cloudflare Workers (assets statiques) via wrangler.
 
 ### Arborescence suggérée
 ```
